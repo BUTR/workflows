@@ -114,12 +114,12 @@ jobs:
           description: ${{ steps.set_description.outputs.mod_description }}
           file_category: main
 
-      - name: Update NexusMods Changelog
-        run: >-
-          unex changelog "${{ steps.set_version.outputs.mod_version }}"
-          -c "${{ steps.set_description.outputs.mod_changelog }}"
-          -m "${{ inputs.nexusmods_mod_id }}";
-        shell: pwsh
-        env:
-          UNEX_GAME: ${{ inputs.nexusmods_game_id }}
-          UNEX_APIKEY: ${{ secrets.NEXUSMODS_APIKEY }}
+      #- name: Update NexusMods Changelog
+      #  run: >-
+      #    unex changelog "${{ steps.set_version.outputs.mod_version }}"
+      #    -c "${{ steps.set_description.outputs.mod_changelog }}"
+      #    -m "${{ inputs.nexusmods_mod_id }}";
+      #  shell: pwsh
+      #  env:
+      #    UNEX_GAME: ${{ inputs.nexusmods_game_id }}
+      #    UNEX_APIKEY: ${{ secrets.NEXUSMODS_APIKEY }}
