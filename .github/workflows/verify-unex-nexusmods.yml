@@ -5,8 +5,6 @@ on:
     secrets:
       NEXUSMODS_API_KEY:
         required: true
-      NEXUSMODS_SESSION_COOKIE:
-        required: true
 
 jobs:
   verify-unex-credentials-nexusmods:
@@ -27,5 +25,4 @@ jobs:
       run: unex check
       env:
         UNEX_APIKEY: ${{ secrets.NEXUSMODS_API_KEY }}
-        UNEX_SESSION_COOKIE: ${{ secrets.NEXUSMODS_SESSION_COOKIE }}
       shell: pwsh

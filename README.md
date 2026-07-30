@@ -5,4 +5,6 @@ You need to either switch to Steam Desktop Authenticator or extract the Shared K
 If Steam Guard is not used, `STEAM_LOGIN` and `STEAM_PASSWORD` will be enough.
 
 ## NexusMods Workflow
-Use any broswe and login to NexusMods. F12 and go to Application tab. Find the Cookie tab in the Storage section. Copy the value of the `nexusmods_session` cookie. This is our `NEXUSMODS_SESSION_COOKIE` secret.  
+Uploads are done via the official NexusMods v3 API and only require an API key. Get one at https://www.nexusmods.com/settings/api-keys - this is our `NEXUSMODS_APIKEY` (`NEXUSMODS_API_KEY` for the verify workflow) secret.
+
+Session cookies (`NEXUSMODS_SESSION_COOKIE`) are no longer used - the cookie-based `refresh-unex-nexusmods.yml` and `verify-nexusmods.yml` workflows were removed.

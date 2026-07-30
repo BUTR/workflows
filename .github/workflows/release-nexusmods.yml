@@ -47,10 +47,6 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install BUTR.NexusUploader
-        run: dotnet tool install -g BUTR.NexusUploader;
-        shell: pwsh
-
       - name: Download Module artifact
         uses: actions/download-artifact@v4
         with:
@@ -104,22 +100,14 @@ jobs:
           echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: Upload to NexusMods
-        uses: Nexus-Mods/upload-action@v1.0.0-beta.5
+        uses: Nexus-Mods/upload-action@v1.0.0-beta.10
         with:
           api_key: ${{ secrets.NEXUSMODS_APIKEY }}
-          file_group_id: ${{ inputs.nexusmods_file_group_id }}
+          file_id: ${{ inputs.nexusmods_file_group_id }}
           filename: ${{ inputs.mod_filename }}.7z
           version: ${{ steps.set_version.outputs.mod_version }}
           display_name: ${{ inputs.mod_filename }}
           description: ${{ steps.set_description.outputs.mod_description }}
-          file_category: main
-
-      #- name: Update NexusMods Changelog
-      #  run: >-
-      #    unex changelog "${{ steps.set_version.outputs.mod_version }}"
-      #    -c "${{ steps.set_description.outputs.mod_changelog }}"
-      #    -m "${{ inputs.nexusmods_mod_id }}";
-      #  shell: pwsh
-      #  env:
-      #    UNEX_GAME: ${{ inputs.nexusmods_game_id }}
-      #    UNEX_APIKEY: ${{ secrets.NEXUSMODS_APIKEY }}
+          category: main
+          mod_id: ${{ inputs.nexusmods_mod_id }}
+          changelog: ${{ steps.set_description.outputs.mod_changelog }}
