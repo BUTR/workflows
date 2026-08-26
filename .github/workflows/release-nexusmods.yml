@@ -99,6 +99,21 @@ jobs:
           echo "$c_desc" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve NexusMods Mod UID
+        id: resolve_mod_uid
+        env:
+          NEXUSMODS_APIKEY: ${{ secrets.NEXUSMODS_APIKEY }}
+        run: |
+          # The upload action's `mod_id` expects the v3 mod UID, not the game-scoped id from the URL.
+          # The UID is only obtainable via the v3 API: GET /v3/games/{game_domain}/mods/{game_scoped_id}
+          url="https://api.nexusmods.com/v3/games/${{ inputs.nexusmods_game_id }}/mods/${{ inputs.nexusmods_mod_id }}"
+          uid="$(curl -sSf -H "apikey: $NEXUSMODS_APIKEY" -H "Accept: application/json" "$url" | jq -r '.data.id')"
+          if [ -z "$uid" ] || [ "$uid" = "null" ]; then
+            echo "::error::Failed to resolve NexusMods mod UID for ${{ inputs.nexusmods_game_id }}/mods/${{ inputs.nexusmods_mod_id }}"
+            exit 1
+          fi
+          echo "mod_uid=$uid" >> "$GITHUB_OUTPUT"
+
       - name: Upload to NexusMods
         uses: Nexus-Mods/upload-action@v1.0.0-beta.10
         with:
@@ -109,5 +124,5 @@ jobs:
           display_name: ${{ inputs.mod_filename }}
           description: ${{ steps.set_description.outputs.mod_description }}
           category: main
-          mod_id: ${{ inputs.nexusmods_mod_id }}
+          mod_id: ${{ steps.resolve_mod_uid.outputs.mod_uid }}
           changelog: ${{ steps.set_description.outputs.mod_changelog }}
