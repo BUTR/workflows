@@ -21,7 +21,7 @@ The Certum secrets live only in code-signing. It signs only what its `config.jso
       CODE_SIGNING_PRIVATE_KEY: ${{ secrets.CODE_SIGNING_PRIVATE_KEY }}
 ```
 
-`release-nuget.yml` signs the binaries inside its packages before pushing them with `sign: true`. The packages travel as an artifact, its name has to be the one code-signing's `config.json` lists for the repository:
+`release-nuget.yml` signs the binaries inside its packages before pushing them with `sign: true`. GitHub Packages then gets package-signed copies, nuget.org the packages without a package signature. The packages travel as an artifact, its name has to be the one code-signing's `config.json` lists for the repository:
 ```yaml
   publish-on-nuget:
     uses: BUTR/workflows/.github/workflows/release-nuget.yml@master

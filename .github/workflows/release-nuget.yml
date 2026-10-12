@@ -92,9 +92,13 @@ jobs:
       run: dotnet nuget push "./packages/*.nupkg" -k ${{ secrets.NUGET_API_KEY }} -s https://www.nuget.org --skip-duplicate
       shell: pwsh
 
+    # Signing leaves copies with a package signature in package-signed/. nuget.org gets the packages without a package signature, since it
+    # only accepts one from a certificate registered there
     - name: Push to GPR
       run: |
-           for f in ./packages/*.nupkg
+           folder=./packages
+           if compgen -G "./packages/package-signed/*.nupkg" > /dev/null; then folder=./packages/package-signed; fi
+           for f in $folder/*.nupkg
            do
              curl -vX PUT -u "vslee:${{ secrets.GITHUB_TOKEN }}" -F package=@$f https://nuget.pkg.github.com/BUTR/
            done
