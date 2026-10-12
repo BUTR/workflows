@@ -1,0 +1,152 @@
+name: Sign with Certum
+
+# Asks Aragas/code-signing to sign an artifact of this run with the Certum Code Signing in the Cloud certificate, waits
+# for it and replaces the artifact with the signed one. The signing secrets live only in Aragas/code-signing, which
+# signs only what its config.json allows, approved by its approvers. See README.md
+
+on:
+  workflow_call:
+    inputs:
+      artifact_name:
+        description: 'The artifact to sign. code-signing''s config.json lists which of its files are signed'
+        required: true
+        type: string
+      signed_artifact_name:
+        description: 'The artifact to upload the signed files to. The input artifact is replaced when empty'
+        required: false
+        type: string
+        default: ''
+      timeout_minutes:
+        description: 'How long to wait for the signing, including signings of other releases queued before it'
+        required: false
+        type: number
+        default: 120
+    secrets:
+      CODE_SIGNING_CLIENT_ID:
+        description: 'The client ID of the Code Signing Requester GitHub App'
+        required: true
+      CODE_SIGNING_PRIVATE_KEY:
+        description: 'The private key of the Code Signing Requester GitHub App'
+        required: true
+    outputs:
+      artifact_name:
+        description: 'The artifact with the signed files'
+        value: ${{ jobs.sign.outputs.artifact_name }}
+
+env:
+  CODE_SIGNING_OWNER: Aragas
+  CODE_SIGNING_REPOSITORY: code-signing
+
+jobs:
+  sign:
+    name: Sign with Certum
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions: {}
+    outputs:
+      artifact_name: ${{ steps.name.outputs.artifact_name }}
+    steps:
+
+    # Can only start and read code-signing's workflows, the requests are verified there
+    - name: Get a token for code-signing
+      id: request-token
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ secrets.CODE_SIGNING_CLIENT_ID }}
+        private-key: ${{ secrets.CODE_SIGNING_PRIVATE_KEY }}
+        owner: ${{ env.CODE_SIGNING_OWNER }}
+        repositories: ${{ env.CODE_SIGNING_REPOSITORY }}
+        permission-actions: write
+
+    - name: Request the signing
+      id: request
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ steps.request-token.outputs.token }}
+        # code-signing is public, this run's own token reads its runs for as long as the job lasts.
+        # The app token expires after an hour, a long queue outlasts it
+        STATUS_TOKEN: ${{ github.token }}
+        ARTIFACT_NAME: ${{ inputs.artifact_name }}
+        TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $repository = "$env:CODE_SIGNING_OWNER/$env:CODE_SIGNING_REPOSITORY"
+        $api = "repos/$repository/actions"
+        # The job's timeout ends the wait, this leaves time to report which run it was
+        $deadline = [DateTimeOffset]::UtcNow.AddMinutes([int]$env:TIMEOUT_MINUTES - 2)
+        $requestId = "$env:GITHUB_REPOSITORY/$env:GITHUB_RUN_ID/$env:GITHUB_RUN_ATTEMPT"
+
+        $body = @{
+          ref = 'master'
+          inputs = @{ repository = $env:GITHUB_REPOSITORY; run_id = $env:GITHUB_RUN_ID; artifact_name = $env:ARTIFACT_NAME; request_id = $requestId }
+        } | ConvertTo-Json -Compress
+        $response = $body | gh api -X POST "$api/workflows/sign.yml/dispatches" -H 'X-GitHub-Api-Version: 2022-11-28' --input -
+        if ($LASTEXITCODE -ne 0) { throw "Couldn't start the signing workflow" }
+        $runId = if ($response) { ($response | ConvertFrom-Json).workflow_run_id }
+
+        # An older API answers without the run, find it by the request id in its name
+        for ($i = 0; -not $runId -and $i -lt 24; $i++) {
+          Start-Sleep -Seconds 5
+          $runId = gh api "$api/workflows/sign.yml/runs?event=workflow_dispatch&per_page=30" --jq ".workflow_runs[] | select(.display_title | contains(`"[$requestId]`")) | .id" | Select-Object -First 1
+        }
+        if (-not $runId) { throw "Couldn't find the signing run of request $requestId" }
+        $url = "https://github.com/$repository/actions/runs/$runId"
+        Write-Host "Signing in $url"
+
+        # Signings run one at a time, queued ones wait for those before them. A failed status check is retried at
+        # the next one, so a passing API error doesn't fail the release
+        $env:GH_TOKEN = $env:STATUS_TOKEN
+        $run = $null
+        do {
+          if ([DateTimeOffset]::UtcNow -gt $deadline) { throw "The signing in $url didn't finish in time" }
+          Start-Sleep -Seconds 20
+          $json = gh api "$api/runs/$runId"
+          if ($LASTEXITCODE -ne 0 -or -not $json) {
+            Write-Warning "Couldn't read the status of $url, retrying"
+            continue
+          }
+          $run = $json | ConvertFrom-Json
+        } while (-not $run -or $run.status -ne 'completed')
+
+        if ($run.conclusion -ne 'success') {
+          Write-Error "The signing ended with '$($run.conclusion)', see $url"
+          exit 1
+        }
+        "run_id=$runId" >> $env:GITHUB_OUTPUT
+
+    # The first token may have expired while waiting in the queue
+    - name: Get a token to download the signed files
+      id: download-token
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ secrets.CODE_SIGNING_CLIENT_ID }}
+        private-key: ${{ secrets.CODE_SIGNING_PRIVATE_KEY }}
+        owner: ${{ env.CODE_SIGNING_OWNER }}
+        repositories: ${{ env.CODE_SIGNING_REPOSITORY }}
+        permission-actions: read
+
+    - name: Download the signed files
+      uses: actions/download-artifact@v8
+      with:
+        name: signed
+        repository: ${{ env.CODE_SIGNING_OWNER }}/${{ env.CODE_SIGNING_REPOSITORY }}
+        run-id: ${{ steps.request.outputs.run_id }}
+        github-token: ${{ steps.download-token.outputs.token }}
+        path: ./signed
+
+    - name: Set the signed artifact name
+      id: name
+      shell: pwsh
+      env:
+        NAME: ${{ inputs.signed_artifact_name || inputs.artifact_name }}
+      run: |
+        "artifact_name=$env:NAME" >> $env:GITHUB_OUTPUT
+
+    - name: Upload the signed artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ steps.name.outputs.artifact_name }}
+        path: ./signed/
+        overwrite: true
+        include-hidden-files: true
+        if-no-files-found: error
