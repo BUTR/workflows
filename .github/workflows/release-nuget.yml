@@ -1,21 +1,42 @@
 name: Release Module on NuGet/GPR
 
+# Packs a project, optionally signs our binaries inside the packages through sign-certum.yml, and pushes them to
+# NuGet and GPR. The packages travel between the jobs as an artifact, so the pushed packages are the signed ones
+
 on:
   workflow_call:
     inputs:
       project_path:
         required: true
         type: string
+      sign:
+        description: 'Sign the binaries inside the packages, Aragas/code-signing''s config.json lists which'
+        required: false
+        type: boolean
+        default: false
+      artifact_name:
+        description: 'The artifact the packages travel in. Derived from project_path when empty, so several calls in one run don''t collide. Signing needs the name config.json lists, like nuget'
+        required: false
+        type: string
+        default: ''
     secrets:
       NUGET_API_KEY:
         required: true
+      CODE_SIGNING_CLIENT_ID:
+        description: 'Needed with sign'
+        required: false
+      CODE_SIGNING_PRIVATE_KEY:
+        description: 'Needed with sign'
+        required: false
 
 jobs:
-  publish-on-github:
-    name: Publish Module on NuGet/GPR
+  pack:
+    name: Pack
     runs-on: ubuntu-latest
+    outputs:
+      artifact_name: ${{ steps.name.outputs.artifact_name }}
     steps:
-    
+
     - name: Setup
       uses: butr/actions-common-setup@v2
       with:
@@ -24,6 +45,48 @@ jobs:
     - name: Pack
       run: dotnet pack ${{ inputs.project_path }} --configuration Release -o "./packages"
       shell: pwsh
+
+    - name: Set the artifact name
+      id: name
+      shell: pwsh
+      env:
+        ARTIFACT_NAME: ${{ inputs.artifact_name }}
+        PROJECT_PATH: ${{ inputs.project_path }}
+      run: |
+        $name = if ($env:ARTIFACT_NAME) { $env:ARTIFACT_NAME } else { 'nuget-' + ($env:PROJECT_PATH -replace '[^A-Za-z0-9._-]', '-') }
+        "artifact_name=$name" >> $env:GITHUB_OUTPUT
+
+    - name: Upload the packages
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ steps.name.outputs.artifact_name }}
+        path: ./packages/
+        if-no-files-found: error
+
+  sign:
+    name: Sign
+    needs: pack
+    if: inputs.sign
+    uses: BUTR/workflows/.github/workflows/sign-certum.yml@master
+    with:
+      artifact_name: ${{ needs.pack.outputs.artifact_name }}
+    secrets:
+      CODE_SIGNING_CLIENT_ID: ${{ secrets.CODE_SIGNING_CLIENT_ID }}
+      CODE_SIGNING_PRIVATE_KEY: ${{ secrets.CODE_SIGNING_PRIVATE_KEY }}
+
+  push:
+    name: Publish Module on NuGet/GPR
+    needs: [pack, sign]
+    # Runs when signing is off, never after a failed signing
+    if: ${{ !cancelled() && needs.pack.result == 'success' && (needs.sign.result == 'success' || needs.sign.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Download the packages
+      uses: actions/download-artifact@v8
+      with:
+        name: ${{ needs.pack.outputs.artifact_name }}
+        path: ./packages
 
     - name: Push to NuGet
       run: dotnet nuget push "./packages/*.nupkg" -k ${{ secrets.NUGET_API_KEY }} -s https://www.nuget.org --skip-duplicate

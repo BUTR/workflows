@@ -21,6 +21,20 @@ The Certum secrets live only in code-signing. It signs only what its `config.jso
       CODE_SIGNING_PRIVATE_KEY: ${{ secrets.CODE_SIGNING_PRIVATE_KEY }}
 ```
 
+`release-nuget.yml` signs the binaries inside its packages before pushing them with `sign: true`. The packages travel as an artifact, its name has to be the one code-signing's `config.json` lists for the repository:
+```yaml
+  publish-on-nuget:
+    uses: BUTR/workflows/.github/workflows/release-nuget.yml@master
+    with:
+      project_path: src/Bannerlord.ButterLib/Bannerlord.ButterLib.csproj
+      sign: true
+      artifact_name: nuget
+    secrets:
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+      CODE_SIGNING_CLIENT_ID: ${{ secrets.CODE_SIGNING_CLIENT_ID }}
+      CODE_SIGNING_PRIVATE_KEY: ${{ secrets.CODE_SIGNING_PRIVATE_KEY }}
+```
+
 ## NexusMods Workflow
 Uploads are done via the official NexusMods v3 API and only require an API key. Get one at https://www.nexusmods.com/settings/api-keys - this is our `NEXUSMODS_APIKEY` (`NEXUSMODS_API_KEY` for the verify workflow) secret.
 
