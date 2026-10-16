@@ -57,36 +57,38 @@ jobs:
       run: dotnet tool install -g Bannerlord.ChangelogParser;
       shell: pwsh
 
+    # The inputs come from changelogs, they go through env so quotes, backticks and $ in them aren't run as shell
     - name: Set Version
       id: set_version
+      env:
+        MOD_VERSION: ${{ inputs.mod_version }}
       run: |
-        if ${{ inputs.mod_version == '' }}
+        if [ -z "$MOD_VERSION" ]
         then
           vers="$(bannerlord_changelog_parser latestversion -f "$PWD/changelog.txt")"
-          echo "::set-output name=mod_version::$vers"
         else
-          echo "::set-output name=mod_version::${{ inputs.mod_version }}"
+          vers="$MOD_VERSION"
         fi
+        echo "mod_version=$vers" >> "$GITHUB_OUTPUT"
 
     - name: Set Description
       id: set_description
+      env:
+        MOD_DESCRIPTION: ${{ inputs.mod_description }}
       run: |
-        if ${{ inputs.mod_description == '' }}
+        if [ -z "$MOD_DESCRIPTION" ]
         then
           desc="$(bannerlord_changelog_parser fulldescription -f "$PWD/changelog.txt")"
-          desc="${desc//'%'/'%25'}"
-          desc="${desc//$'"'/'%22'}"
-          desc="${desc//$'\n'/'%0A'}"
-          desc="${desc//$'\r'/'%0D'}"
-          echo "::set-output name=mod_description::$desc"
         else
-          desc="${{ inputs.mod_description }}"
-          desc="${desc//'%'/'%25'}"
-          desc="${desc//$'"'/'%22'}"
-          desc="${desc//$'\n'/'%0A'}"
-          desc="${desc//$'\r'/'%0D'}"
-          echo "::set-output name=mod_description::$desc"
+          desc="$MOD_DESCRIPTION"
         fi
+        # A random delimiter, so no line of the description can end the value early
+        eof="EOF_$(openssl rand -hex 16)"
+        {
+          echo "mod_description<<$eof"
+          echo "$desc"
+          echo "$eof"
+        } >> "$GITHUB_OUTPUT"
 
     - name: Create Release
       uses: actions/create-release@v1

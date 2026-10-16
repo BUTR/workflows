@@ -59,25 +59,25 @@ jobs:
       run: dotnet tool install -g Bannerlord.ChangelogParser;
       shell: pwsh
 
+    # The description comes from a changelog, it goes through env so quotes, backticks and $ in it aren't run as shell
     - name: Set Description
       id: set_description
+      env:
+        MOD_DESCRIPTION: ${{ inputs.mod_description }}
       run: |
-        if ${{ inputs.mod_description == '' }}
+        if [ -z "$MOD_DESCRIPTION" ]
         then
           desc="$(bannerlord_changelog_parser fulldescription -f "$PWD/changelog.txt")"
-          desc="${desc//'%'/'%25'}"
-          desc="${desc//$'"'/'%22'}"
-          desc="${desc//$'\n'/'%0A'}"
-          desc="${desc//$'\r'/'%0D'}"
-          echo "::set-output name=mod_description::$desc"
         else
-          desc="${{ inputs.mod_description }}"
-          desc="${desc//'%'/'%25'}"
-          desc="${desc//$'"'/'%22'}"
-          desc="${desc//$'\n'/'%0A'}"
-          desc="${desc//$'\r'/'%0D'}"
-          echo "::set-output name=mod_description::$desc"
+          desc="$MOD_DESCRIPTION"
         fi
+        # A random delimiter, so no line of the description can end the value early
+        eof="EOF_$(openssl rand -hex 16)"
+        {
+          echo "mod_description<<$eof"
+          echo "$desc"
+          echo "$eof"
+        } >> "$GITHUB_OUTPUT"
 
     - uses: CyberAndrii/setup-steamcmd@v1
 
@@ -85,6 +85,13 @@ jobs:
       run: dotnet tool install -g Bannerlord.SteamWorkshop;
       shell: pwsh
 
-    - run: |
-        bannerlord_steam_workshop loginandpublish -l "${{ secrets.STEAM_LOGIN }}" -p "${{ secrets.STEAM_PASSWORD }}" -t ${{ secrets.STEAM_AUTH_CODE }} -f "${{ inputs.workshop_id }}" -c "${{ github.workspace }}/artifact/Modules/${{ inputs.mod_id }}" -d "${{ steps.set_description.outputs.mod_description }}";
+    - env:
+        STEAM_LOGIN: ${{ secrets.STEAM_LOGIN }}
+        STEAM_PASSWORD: ${{ secrets.STEAM_PASSWORD }}
+        STEAM_AUTH_CODE: ${{ secrets.STEAM_AUTH_CODE }}
+        WORKSHOP_ID: ${{ inputs.workshop_id }}
+        MOD_ID: ${{ inputs.mod_id }}
+        MOD_DESCRIPTION: ${{ steps.set_description.outputs.mod_description }}
+      run: |
+        bannerlord_steam_workshop loginandpublish -l $env:STEAM_LOGIN -p $env:STEAM_PASSWORD -t $env:STEAM_AUTH_CODE -f $env:WORKSHOP_ID -c "$env:GITHUB_WORKSPACE/artifact/Modules/$env:MOD_ID" -d $env:MOD_DESCRIPTION;
       shell: pwsh
