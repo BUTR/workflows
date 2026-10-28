@@ -30,6 +30,16 @@ on:
         required: false
         type: boolean
         default: true
+      # The mod page shows its own version, the upload only changes it when asked to
+      update_mod_version:
+        required: false
+        type: boolean
+        default: true
+      # A previous version keeps the primary flag unless the new upload takes it, and mod managers download the primary file
+      primary_mod_manager_download:
+        required: false
+        type: boolean
+        default: true
     secrets:
       NEXUSMODS_APIKEY:
         required: true
@@ -136,5 +146,7 @@ jobs:
           display_name: ${{ inputs.mod_filename }}
           description: ${{ steps.set_description.outputs.mod_description }}
           category: main
+          update_mod_version: ${{ inputs.update_mod_version }}
+          primary_mod_manager_download: ${{ inputs.primary_mod_manager_download }}
           mod_id: ${{ steps.resolve_mod_uid.outputs.mod_uid }}
           changelog: ${{ steps.set_description.outputs.mod_changelog }}
